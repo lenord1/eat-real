@@ -3,7 +3,7 @@ import {
   Search, MapPin, Filter, Star, AlertTriangle, User, Heart, Users, 
   Utensils, Lock, PlayCircle, X, Tv, Crown, CreditCard, LocateFixed, 
   ExternalLink, Loader2, ArrowRight, SlidersHorizontal, CheckCircle, Dog, 
-  ChevronDown, Map as MapIcon, Calendar
+  ChevronDown, Map as MapIcon, Calendar, RefreshCw
 } from 'lucide-react';
 
 // --- 設定檔 ---
@@ -17,7 +17,7 @@ const DINING_TYPES = [
   { id: 'group', name: "多人聚餐", icon: <Users size={24} />, desc: "好聊好吵", color: "text-violet-500", bg: "bg-violet-50", border: "border-violet-200", hover: "hover:bg-violet-100" },
 ];
 
-// --- 2. 詳細分類 (16種) ---
+// --- 2. 詳細分類 ---
 const CATEGORIES = [
   { name: "全部", icon: "🍽️" }, { name: "火鍋", icon: "🍲" }, { name: "燒肉", icon: "🔥" }, { name: "拉麵", icon: "🍜" },
   { name: "壽司", icon: "🍣" }, { name: "牛排", icon: "🥩" }, { name: "早午餐", icon: "🍳" }, { name: "咖啡廳", icon: "☕" },
@@ -35,8 +35,7 @@ const GoogleMapsService = {
   },
   searchNearby: async (lat, lng, keyword, category) => {
     try {
-  // 修改後的正確程式碼
-const response = await fetch('https://eat-real-backend-2.onrender.com/api/search', {
+      const response = await fetch('http://localhost:3000/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lat, lng, keyword: keyword || (category === "全部" ? "" : category) })
@@ -124,7 +123,18 @@ const LocationModal = ({ isOpen, onClose, onSetLocation }) => {
   const handleGPS = () => {
     setIsProcessing(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => { setIsProcessing(false); onSetLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }, "我的位置"); onClose(); },
+      (pos) => { 
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        if (!GoogleMapsService.checkIsInServiceArea && (lat < 24.6 || lat > 25.35 || lng < 121.0 || lng > 122.0)) {
+             setIsProcessing(false);
+             alert("抱歉，食真目前僅服務北北基桃。\n已為您切換至台北市中心。");
+             onSetLocation({ lat: 25.037, lng: 121.565 }, "台北市信義區 (預設)");
+             onClose();
+             return;
+        }
+        setIsProcessing(false); onSetLocation({ lat, lng }, "我的位置"); onClose(); 
+      },
       (err) => { setIsProcessing(false); alert("定位失敗"); }, { enableHighAccuracy: true }
     );
   };
@@ -134,7 +144,7 @@ const LocationModal = ({ isOpen, onClose, onSetLocation }) => {
     try {
       const result = await GoogleMapsService.geocode(address);
       setIsProcessing(false); onSetLocation(result, result.formattedAddress); onClose();
-    } catch (e) { setIsProcessing(false); alert("找不到該地址"); }
+    } catch (e) { setIsProcessing(false); alert("找不到該地址或不在服務範圍內"); }
   };
   return (
     <div className="fixed inset-0 z-[60] bg-slate-900/60 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
@@ -143,7 +153,7 @@ const LocationModal = ({ isOpen, onClose, onSetLocation }) => {
         <div className="text-center">
           <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center mx-auto mb-3 text-teal-600"><MapPin size={24} /></div>
           <h2 className="text-xl font-bold text-slate-800">設定所在位置</h2>
-          <p className="text-xs text-slate-400 mt-1">尋找您附近的真實美味</p>
+          <p className="text-xs text-slate-400 mt-1">服務範圍：台北、新北、基隆、桃園</p>
         </div>
         <button onClick={handleGPS} disabled={isProcessing} className="w-full py-3.5 rounded-2xl bg-teal-500 text-white font-bold hover:bg-teal-600 active:scale-95 transition shadow-md shadow-teal-200 flex items-center justify-center gap-2">
           {isProcessing ? <Loader2 size={18} className="animate-spin" /> : <LocateFixed size={18} />} 使用 GPS 定位
@@ -158,162 +168,60 @@ const LocationModal = ({ isOpen, onClose, onSetLocation }) => {
   );
 };
 
-// 綠界金流 & 廣告解鎖視窗
 const PremiumModal = ({ isOpen, onClose, onUnlockTemp, onSubscribe }) => {
   const [step, setStep] = useState('select'); 
   const [adTimeLeft, setAdTimeLeft] = useState(null);
-  const [plan, setPlan] = useState('monthly'); // monthly or yearly
+  const [plan, setPlan] = useState('monthly');
 
   useEffect(() => {
     if (adTimeLeft === null) return;
-    if (adTimeLeft > 0) {
-      const timer = setTimeout(() => setAdTimeLeft(adTimeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else {
-      onUnlockTemp();
-      onClose();
-      setAdTimeLeft(null);
-    }
+    if (adTimeLeft > 0) { const timer = setTimeout(() => setAdTimeLeft(adTimeLeft - 1), 1000); return () => clearTimeout(timer); } 
+    else { onUnlockTemp(); onClose(); setAdTimeLeft(null); }
   }, [adTimeLeft, onUnlockTemp, onClose]);
 
   const handlePay = async (selectedPlan) => { 
     setStep('processing'); 
-    
-    // 呼叫後端建立綠界訂單 (模擬)
     try {
-        const amount = selectedPlan === 'monthly' ? 70 : 672; // 70*12*0.8 = 672
+        const amount = selectedPlan === 'monthly' ? 70 : 672;
         const planName = selectedPlan === 'monthly' ? "食真 Pro 月訂閱" : "食真 Pro 年訂閱 (8折)";
-
-        // 真實環境請解除以下註解並呼叫後端
-        /*
-        const response = await fetch('http://localhost:3000/api/payment/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ planName, amount })
-        });
-        const data = await response.json();
-        // 在這裡應該要建立一個 form 並自動 submit 到綠界
-        */
-       
-        // 模擬成功
-        setTimeout(() => { 
-            onSubscribe(); 
-            onClose(); 
-            setStep('select'); 
-            alert(`🎉 訂閱成功！\n您已選擇 ${planName}，金額 NT$${amount}。`); 
-        }, 2000);
-
-    } catch(e) {
-        alert("付款失敗");
-        setStep('select');
-    }
+        setTimeout(() => { onSubscribe(); onClose(); setStep('select'); alert(`🎉 訂閱成功！\n您已選擇 ${planName}，金額 NT$${amount}。`); }, 2000);
+    } catch(e) { alert("付款失敗"); setStep('select'); }
   };
   
   if (!isOpen) return null;
-
-  // 廣告畫面
-  if (adTimeLeft !== null) {
-    return (
-      <div className="fixed inset-0 z-[70] bg-black/95 flex flex-col items-center justify-center p-4">
-        <div className="bg-gray-900 w-full max-w-md aspect-video rounded-2xl flex flex-col items-center justify-center relative border border-gray-700 shadow-2xl overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 to-purple-900 flex flex-col items-center justify-center text-white space-y-4">
-            <Tv size={48} className="text-yellow-400 animate-pulse" />
-            <h3 className="text-2xl font-bold">超級美味炸雞</h3>
-            <p className="text-gray-300 font-mono">廣告剩餘 {adTimeLeft} 秒...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (adTimeLeft !== null) return (<div className="fixed inset-0 z-[70] bg-black/95 flex flex-col items-center justify-center p-4"><div className="bg-gray-900 w-full max-w-md aspect-video rounded-2xl flex flex-col items-center justify-center relative border border-gray-700 shadow-2xl overflow-hidden"><div className="absolute inset-0 bg-gradient-to-br from-indigo-900 to-purple-900 flex flex-col items-center justify-center text-white space-y-4"><Tv size={48} className="text-yellow-400 animate-pulse" /><h3 className="text-2xl font-bold">超級美味炸雞</h3><p className="text-gray-300 font-mono">廣告剩餘 {adTimeLeft} 秒...</p></div></div></div>);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 flex flex-col items-center justify-center p-4 backdrop-blur-md animate-in fade-in">
       <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl relative border border-white/50">
         <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors z-10"><X size={20} /></button>
-        
         {step === 'processing' ? (
           <div className="p-16 flex flex-col items-center justify-center space-y-6">
-            <div className="relative">
-                <div className="w-16 h-16 border-4 border-teal-100 border-t-teal-500 rounded-full animate-spin"></div>
-                <div className="absolute inset-0 flex items-center justify-center"><CreditCard size={24} className="text-teal-600"/></div>
-            </div>
-            <div className="text-center">
-                <p className="font-bold text-slate-800 text-lg">正在連接綠界金流...</p>
-                <p className="text-slate-400 text-xs mt-1">安全加密連線中</p>
-            </div>
+            <div className="relative"><div className="w-16 h-16 border-4 border-teal-100 border-t-teal-500 rounded-full animate-spin"></div><div className="absolute inset-0 flex items-center justify-center"><CreditCard size={24} className="text-teal-600"/></div></div>
+            <div className="text-center"><p className="font-bold text-slate-800 text-lg">正在安全連接綠界金流...</p><p className="text-slate-400 text-xs mt-1">請勿關閉視窗</p></div>
           </div>
         ) : (
           <>
             <div className="p-8 text-center bg-gradient-to-b from-slate-50 to-white">
               <div className="w-14 h-14 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-4 text-teal-600 transform rotate-3"><Lock size={28} /></div>
               <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">解鎖進階偵測</h2>
-              <p className="text-slate-500 text-sm mt-2 leading-relaxed">訂閱即可無限次查看真實評論分析<br/>或觀看廣告單次解鎖</p>
+              <p className="text-slate-500 text-sm mt-2 leading-relaxed">查看真實評論數據，避開 5 星洗評雷店<br/>還原最真實的美味評價。</p>
             </div>
-            
             <div className="p-6 space-y-3 bg-white">
-              {/* 月訂閱 */}
-              <div 
-                className={`border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all ${plan === 'monthly' ? 'border-teal-500 bg-teal-50 shadow-md' : 'border-slate-200 hover:border-teal-300'}`}
-                onClick={() => setPlan('monthly')}
-              >
-                <div className="flex items-center gap-4">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'monthly' ? 'border-teal-500 bg-teal-500' : 'border-slate-300'}`}>
-                        {plan === 'monthly' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-slate-800">月訂閱</h3>
-                        <p className="text-xs text-slate-500">隨時可取消</p>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <span className="block text-lg font-bold text-teal-700">NT$ 70</span>
-                    <span className="text-[10px] text-teal-500 uppercase">/ Month</span>
-                </div>
+              <div className={`border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all ${plan === 'monthly' ? 'border-teal-500 bg-teal-50 shadow-md' : 'border-slate-200 hover:border-teal-300'}`} onClick={() => setPlan('monthly')}>
+                <div className="flex items-center gap-4"><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'monthly' ? 'border-teal-500 bg-teal-500' : 'border-slate-300'}`}>{plan === 'monthly' && <div className="w-2 h-2 bg-white rounded-full"></div>}</div><div><h3 className="font-bold text-slate-800">月訂閱</h3><p className="text-xs text-slate-500">隨時可取消</p></div></div>
+                <div className="text-right"><span className="block text-lg font-bold text-teal-700">NT$ 70</span><span className="text-[10px] text-teal-500 uppercase">/ Month</span></div>
               </div>
-
-              {/* 年訂閱 */}
-              <div 
-                className={`relative border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all overflow-hidden ${plan === 'yearly' ? 'border-amber-500 bg-amber-50 shadow-md' : 'border-slate-200 hover:border-amber-300'}`}
-                onClick={() => setPlan('yearly')}
-              >
+              <div className={`relative border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all overflow-hidden ${plan === 'yearly' ? 'border-amber-500 bg-amber-50 shadow-md' : 'border-slate-200 hover:border-amber-300'}`} onClick={() => setPlan('yearly')}>
                 <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">🔥 80% OFF</div>
-                <div className="flex items-center gap-4">
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'yearly' ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>
-                        {plan === 'yearly' && <div className="w-2 h-2 bg-white rounded-full"></div>}
-                    </div>
-                    <div>
-                        <h3 className="font-bold text-slate-800">年訂閱</h3>
-                        <p className="text-xs text-amber-600 font-bold">激省方案！</p>
-                    </div>
-                </div>
-                <div className="text-right mt-1">
-                    <span className="block text-lg font-bold text-amber-700">NT$ 672</span>
-                    <span className="text-[10px] text-amber-600 uppercase line-through opacity-60">NT$ 840</span>
-                </div>
+                <div className="flex items-center gap-4"><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'yearly' ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>{plan === 'yearly' && <div className="w-2 h-2 bg-white rounded-full"></div>}</div><div><h3 className="font-bold text-slate-800">年訂閱</h3><p className="text-xs text-amber-600 font-bold">激省方案！</p></div></div>
+                <div className="text-right mt-1"><span className="block text-lg font-bold text-amber-700">NT$ 672</span><span className="text-[10px] text-amber-600 uppercase line-through opacity-60">NT$ 840</span></div>
               </div>
-
-              {/* 訂閱按鈕 */}
-              <button 
-                onClick={() => handlePay(plan)}
-                className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 mt-2 ${plan === 'yearly' ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-orange-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}
-              >
-                {plan === 'yearly' ? <Crown size={18} /> : <CreditCard size={18} />}
-                {plan === 'yearly' ? '升級年繳會員 (省很大)' : '開啟月訂閱'}
+              <button onClick={() => handlePay(plan)} className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 mt-2 ${plan === 'yearly' ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-orange-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}>
+                {plan === 'yearly' ? <Crown size={18} /> : <CreditCard size={18} />} {plan === 'yearly' ? '升級年繳會員 (省很大)' : '開啟月訂閱'}
               </button>
-
-              {/* 廣告選項 */}
-              <div className="relative py-2 flex items-center">
-                  <div className="flex-grow border-t border-slate-100"></div>
-                  <span className="flex-shrink-0 mx-3 text-slate-300 text-xs">OR</span>
-                  <div className="flex-grow border-t border-slate-100"></div>
-              </div>
-              
-              <button 
-                onClick={() => setAdTimeLeft(5)}
-                className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center gap-2"
-              >
-                <PlayCircle size={16} /> 看廣告單次解鎖
-              </button>
+              <div className="relative py-2 flex items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink-0 mx-3 text-slate-300 text-xs">OR</span><div className="flex-grow border-t border-slate-100"></div></div>
+              <button onClick={() => setAdTimeLeft(5)} className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center gap-2"><PlayCircle size={16} /> 看廣告單次解鎖</button>
             </div>
           </>
         )}
@@ -329,7 +237,6 @@ export default function EatRealApp() {
   const [selectedDiningType, setSelectedDiningType] = useState(null);
   const [spamThreshold, setSpamThreshold] = useState(0.15); 
   const [filters, setFilters] = useState({ pet: false, price: "all" });
-  
   const [currentLocation, setCurrentLocation] = useState({ lat: 25.037, lng: 121.565 });
   const [locationName, setLocationName] = useState(""); 
   const [isSearching, setIsSearching] = useState(false); 
@@ -339,9 +246,23 @@ export default function EatRealApp() {
   const [isFeatureUnlocked, setIsFeatureUnlocked] = useState(false); 
   const [showPremiumModal, setShowPremiumModal] = useState(false); 
   const [showLocationModal, setShowLocationModal] = useState(false);
+  
+  // [新功能] 控制選單收合狀態
+  const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
 
-  // Pro 會員預設全解鎖，且滑桿可以自由調整 (不會被鎖定)
   useEffect(() => { if (isProMember) setIsFeatureUnlocked(true); }, [isProMember]);
+
+  // [新功能] 自動觸發搜尋與收合選單
+  useEffect(() => {
+    // 只有當 1. 情境已選 2. 類別已選 (且不是初始狀態) 時才觸發
+    if (selectedDiningType && selectedCategory !== "全部") {
+        // 延遲收合，給使用者一點視覺確認的時間
+        const timer = setTimeout(() => {
+            setIsControlsCollapsed(true);
+        }, 500);
+        return () => clearTimeout(timer);
+    }
+  }, [selectedDiningType, selectedCategory]);
 
   useEffect(() => {
     let isMounted = true;
@@ -373,20 +294,24 @@ export default function EatRealApp() {
     });
   }, [restaurants, selectedDiningType, spamThreshold, filters]);
 
+  const resetSelection = () => {
+      setIsControlsCollapsed(false);
+      // 選擇性：是否要重置選項？通常使用者只想微調，所以只展開不重置比較好
+  };
+
   return (
     <div className="flex flex-col h-screen bg-slate-50 text-slate-800 font-sans relative overflow-hidden">
       <LocationModal isOpen={showLocationModal} onClose={() => setShowLocationModal(false)} onSetLocation={(coords, name) => { setCurrentLocation(coords); setLocationName(name); }} />
       <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} onUnlockTemp={() => setIsFeatureUnlocked(true)} onSubscribe={() => setIsProMember(true)} />
 
       {/* Header */}
-      <header className="bg-white px-6 py-4 shadow-sm z-20 flex justify-between items-center sticky top-0">
+      <header className="bg-white px-6 py-4 shadow-sm z-20 flex justify-between items-center sticky top-0 transition-all duration-300">
         <div className="flex items-center gap-3">
           <div className="bg-teal-500 p-2.5 rounded-2xl text-white shadow-lg shadow-teal-200"><Utensils size={24} strokeWidth={2.5} /></div>
           <div>
              <h1 className="text-xl font-extrabold tracking-tight text-slate-800">食真 EatReal</h1>
-             <p className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">Real Reviews Only</p>
+             {isProMember && <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold ml-1">PRO</span>}
           </div>
-          {isProMember && <span className="ml-2 bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm flex items-center gap-1 border border-amber-200"><Crown size={12} strokeWidth={3} /> PRO</span>}
         </div>
         <button onClick={() => setShowLocationModal(true)} className="flex items-center gap-2 text-xs px-4 py-2.5 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition border border-slate-200 max-w-[160px] group">
           <LocateFixed size={16} className="flex-shrink-0 text-teal-500 group-hover:scale-110 transition-transform" />
@@ -394,114 +319,80 @@ export default function EatRealApp() {
         </button>
       </header>
 
-      {/* Controls Section */}
-      <div className="bg-white/80 backdrop-blur-md shadow-sm z-10 border-b border-slate-200 pt-4 pb-6 px-6 space-y-6 overflow-y-auto" style={{maxHeight: '60vh'}}>
+      {/* [新] Controls Section (可收合) */}
+      <div className={`bg-white/80 backdrop-blur-md shadow-sm z-10 border-b border-slate-200 px-6 transition-all duration-500 ease-in-out overflow-hidden flex flex-col ${isControlsCollapsed ? 'max-h-0 py-0 opacity-0' : 'max-h-[60vh] py-6 opacity-100'}`}>
         
         {/* Search Bar */}
-        <div className="relative group">
+        <div className="relative group mb-6">
           <div className="absolute left-5 top-4 text-slate-400 group-focus-within:text-teal-500 transition-colors"><Search size={20}/></div>
-          <input 
-            type="text" 
-            placeholder="搜尋餐廳、種類或關鍵字..." 
-            className="w-full pl-14 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:ring-0 focus:border-teal-500 focus:bg-white transition-all text-sm shadow-inner outline-none placeholder:text-slate-400"
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)} 
-          />
+          <input type="text" placeholder="搜尋餐廳、種類或關鍵字..." className="w-full pl-14 pr-4 py-4 bg-slate-50 border-2 border-transparent rounded-2xl focus:ring-0 focus:border-teal-500 focus:bg-white transition-all text-sm shadow-inner outline-none placeholder:text-slate-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           {isSearching && <div className="absolute right-5 top-4 text-teal-500 animate-spin"><Loader2 size={20}/></div>}
         </div>
 
         {/* 1. 用餐情境快速選擇 (Cards) */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4 mb-6">
           {DINING_TYPES.map((type) => {
             const isSelected = selectedDiningType === type.id;
             return (
               <button 
                 key={type.id} 
                 onClick={() => setSelectedDiningType(isSelected ? null : type.id)} 
-                className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-300 h-24 flex flex-col items-center justify-center gap-2 shadow-sm hover:-translate-y-1
-                  ${isSelected ? `border-${type.color.split('-')[1]}-500 bg-${type.color.split('-')[1]}-50 ring-2 ring-${type.color.split('-')[1]}-200 ring-offset-1` : `border-slate-100 bg-white hover:border-${type.color.split('-')[1]}-200`}`}
+                className={`relative overflow-hidden rounded-2xl border-2 transition-all duration-300 h-24 flex flex-col items-center justify-center gap-2 shadow-sm hover:-translate-y-1 ${isSelected ? `border-${type.color.split('-')[1]}-500 bg-${type.color.split('-')[1]}-50 ring-2 ring-${type.color.split('-')[1]}-200` : `border-slate-100 bg-white hover:border-${type.color.split('-')[1]}-200`}`}
               >
                 <div className={`transition-transform duration-300 ${isSelected ? 'scale-110 ' + type.color : 'text-slate-400'}`}>{type.icon}</div>
                 <span className={`text-xs font-bold ${isSelected ? 'text-slate-800' : 'text-slate-500'}`}>{type.name}</span>
-                <div className={`absolute bottom-0 left-0 w-full h-1 ${isSelected ? 'bg-current ' + type.color : 'bg-transparent'}`}></div>
               </button>
             );
           })}
         </div>
 
-        {/* 2. 詳細分類選單 (Grid Layout - 多排排列) */}
-        <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-2">
+        {/* 2. 詳細分類選單 (Grid) */}
+        <div className="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-8 gap-2 mb-4">
             {CATEGORIES.map((cat) => (
-                <button
-                    key={cat.name}
-                    onClick={() => setSelectedCategory(cat.name)}
-                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-200 aspect-square
-                        ${selectedCategory === cat.name 
-                            ? 'bg-slate-800 text-white border-slate-800 shadow-md ring-2 ring-slate-200 ring-offset-1' 
-                            : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700'}`}
-                >
+                <button key={cat.name} onClick={() => setSelectedCategory(cat.name)} className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all duration-200 aspect-square ${selectedCategory === cat.name ? 'bg-slate-800 text-white border-slate-800 shadow-md ring-2 ring-slate-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300 hover:bg-slate-50'}`}>
                     <span className="text-xl mb-1">{cat.icon}</span>
                     <span className="text-[10px] font-bold whitespace-nowrap">{cat.name}</span>
                 </button>
             ))}
         </div>
 
-        {/* Filters & Slider */}
-        <div className="flex flex-wrap gap-4 items-center pt-2">
-          {/* 洗評敏感度 (上鎖邏輯) */}
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4 items-center">
           <div className={`flex-grow px-4 py-3 rounded-2xl border flex flex-col justify-center min-w-[200px] relative overflow-hidden transition-all ${isFeatureUnlocked ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
-             
-             {/* 鎖定遮罩 */}
-             {!isFeatureUnlocked && (
-                <div className="absolute inset-0 bg-slate-100/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                    <button onClick={() => setShowPremiumModal(true)} className="bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 flex items-center gap-1 hover:bg-slate-50">
-                        <Lock size={12}/> 解鎖調整
-                    </button>
-                </div>
-             )}
-
-             <div className="flex justify-between text-xs text-slate-500 font-bold mb-2">
-               <span className="flex items-center gap-1.5"><SlidersHorizontal size={14} className="text-slate-400"/> 洗評敏感度設定</span>
-               <span className={`px-2 py-0.5 rounded transition-colors ${isFeatureUnlocked ? 'text-teal-600 bg-teal-100' : 'text-slate-400 bg-slate-200'}`}>{(spamThreshold * 100).toFixed(0)}%</span>
-             </div>
-             <input 
-                type="range" 
-                min="0.05" max="0.50" step="0.05" 
-                value={spamThreshold} 
-                onChange={(e) => setSpamThreshold(parseFloat(e.target.value))} 
-                disabled={!isFeatureUnlocked}
-                className="w-full h-2 bg-slate-300 rounded-full appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition disabled:cursor-not-allowed disabled:accent-slate-400" 
-             />
+             {!isFeatureUnlocked && <div className="absolute inset-0 bg-slate-100/60 backdrop-blur-[1px] z-10 flex items-center justify-center"><button onClick={() => setShowPremiumModal(true)} className="bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 flex items-center gap-1 hover:bg-slate-50"><Lock size={12}/> 解鎖調整</button></div>}
+             <div className="flex justify-between text-xs text-slate-500 font-bold mb-2"><span className="flex items-center gap-1.5"><SlidersHorizontal size={14}/> 洗評敏感度</span><span className="text-teal-600 bg-teal-100 px-2 py-0.5 rounded">{(spamThreshold * 100).toFixed(0)}%</span></div>
+             <input type="range" min="0.05" max="0.50" step="0.05" value={spamThreshold} onChange={(e) => setSpamThreshold(parseFloat(e.target.value))} disabled={!isFeatureUnlocked} className="w-full h-2 bg-slate-300 rounded-full appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition disabled:cursor-not-allowed" />
           </div>
-          
-          <select 
-              className="flex-shrink-0 px-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm text-slate-600 font-bold shadow-sm focus:outline-none focus:border-teal-500 transition hover:bg-slate-50 cursor-pointer"
-              value={filters.price} 
-              onChange={(e) => setFilters({...filters, price: e.target.value})}
-            >
-              <option value="all">💰 預算不限</option>
-              <option value="$">$ 平價</option>
-              <option value="$$">$$ 中價</option>
-              <option value="$$$">$$$ 高檔</option>
-            </select>
-
-            <button 
-              onClick={() => setFilters({...filters, pet: !filters.pet})}
-              className={`flex-shrink-0 whitespace-nowrap flex items-center gap-2 px-5 py-3 rounded-2xl text-sm border-2 transition shadow-sm font-bold active:scale-95 ${filters.pet ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
-            >
-              <Dog size={18}/> 寵物友善
-            </button>
+          <select className="flex-shrink-0 px-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm text-slate-600 font-bold shadow-sm focus:outline-none focus:border-teal-500 transition hover:bg-slate-50 cursor-pointer" value={filters.price} onChange={(e) => setFilters({...filters, price: e.target.value})}>
+              <option value="all">💰 預算不限</option><option value="$">$ 平價</option><option value="$$">$$ 中價</option><option value="$$$">$$$ 高檔</option>
+          </select>
+          <button onClick={() => setFilters({...filters, pet: !filters.pet})} className={`flex-shrink-0 whitespace-nowrap flex items-center gap-2 px-5 py-3 rounded-2xl text-sm border-2 transition shadow-sm font-bold active:scale-95 ${filters.pet ? 'bg-orange-50 border-orange-200 text-orange-600' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}><Dog size={18}/> 寵物友善</button>
         </div>
       </div>
 
+      {/* [新] 收合狀態下的重新選擇 Bar */}
+      {isControlsCollapsed && (
+        <div className="bg-white z-10 shadow-md border-b border-slate-100 px-4 py-3 flex justify-between items-center animate-in slide-in-from-top duration-300">
+            <div className="flex items-center gap-2 overflow-hidden">
+                {selectedDiningType && <span className="text-xs font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full whitespace-nowrap">{DINING_TYPES.find(t => t.id === selectedDiningType)?.name}</span>}
+                {selectedCategory !== "全部" && <span className="text-xs font-bold bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full whitespace-nowrap">{selectedCategory}</span>}
+                <span className="text-xs text-slate-400 ml-1">找到 {processedRestaurants.length} 間</span>
+            </div>
+            <button onClick={resetSelection} className="flex items-center gap-1.5 text-xs font-bold bg-teal-600 text-white px-4 py-2 rounded-full hover:bg-teal-700 transition shadow-sm flex-shrink-0">
+                <RefreshCw size={14}/> 重新選擇
+            </button>
+        </div>
+      )}
+
       {/* Restaurant List */}
       <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/50 pb-24 scrollbar-hide">
-        <div className="flex justify-between items-end px-1">
-            <h2 className="text-lg font-bold text-slate-800">
-                {selectedDiningType ? `適合「${DINING_TYPES.find(t => t.id === selectedDiningType)?.name}」` : "附近推薦"}
-            </h2>
-            <span className="text-xs font-bold text-slate-400 bg-slate-200 px-2 py-1 rounded-lg">{processedRestaurants.length} 間</span>
-        </div>
+        {!isControlsCollapsed && (
+            <div className="flex justify-between items-end px-1 mb-2">
+                <h2 className="text-lg font-bold text-slate-800">
+                    {selectedDiningType ? `適合「${DINING_TYPES.find(t => t.id === selectedDiningType)?.name}」` : "附近推薦"}
+                </h2>
+            </div>
+        )}
         
         {processedRestaurants.map(resto => (
             <div key={resto.id} className={`relative p-5 rounded-[24px] border transition-all bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-default group ${isFeatureUnlocked && resto.isSpam ? 'bg-red-50/40 border-red-100' : 'border-white ring-1 ring-slate-100'}`}>
@@ -522,7 +413,7 @@ export default function EatRealApp() {
                       </div>
                   </div>
 
-                  {/* 洗評警告與按鈕 (鎖定邏輯) */}
+                  {/* 洗評警告與按鈕 */}
                   <div className="mt-4 flex items-center justify-between">
                     {!isFeatureUnlocked && resto.isSpam ? (
                         <button 
