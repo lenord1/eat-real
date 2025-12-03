@@ -3,7 +3,7 @@ import {
   Search, MapPin, Filter, Star, AlertTriangle, User, Heart, Users, 
   Utensils, Lock, PlayCircle, X, Tv, Crown, CreditCard, LocateFixed, 
   ExternalLink, Loader2, ArrowRight, SlidersHorizontal, CheckCircle, Dog, 
-  ChevronDown, Map as MapIcon, ThumbsUp, MessageSquare
+  ChevronDown, Map as MapIcon, Ticket
 } from 'lucide-react';
 
 // --- 設定檔 ---
@@ -30,6 +30,7 @@ const GoogleMapsService = {
   getDistrictName: (lat, lng) => {
     if (lat > 25.00 && lat < 25.02 && lng > 121.45 && lng < 121.48) return { city: "新北市", dist: "板橋區", roads: ["文化路", "縣民大道", "中山路", "府中路"] };
     if (lat > 25.02 && lat < 25.05 && lng > 121.55 && lng < 121.58) return { city: "台北市", dist: "信義區", roads: ["忠孝東路", "信義路", "松仁路", "基隆路"] };
+    if (lat > 25.04 && lat < 25.06 && lng > 121.51 && lng < 121.54) return { city: "台北市", dist: "中山區", roads: ["中山北路", "林森北路", "南京東路", "松江路"] };
     return { city: "台北市", dist: "市中心", roads: ["復興南路", "敦化南路", "和平東路"] }; 
   },
 
@@ -60,9 +61,9 @@ const GoogleMapsService = {
           reviews: place.userRatingCount || 0,
           shortFiveStarReviews: Math.floor((place.userRatingCount || 0) * 0.12),
           category: "餐廳", price: "$$", tags: [], isSolo: true, isPet: false, image: "🍽️",
-          address: place.formattedAddress || "地址載入中...",
-          // 真實資料直接用 Place ID
-          googleMapsUrl: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`
+          address: place.formattedAddress || "",
+          // 真實模式：直接用 Place ID 最準
+          googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName?.text)}&query_place_id=${place.place_id}`
         }));
       }
       return GoogleMapsService.mockSearch(lat, lng, keyword, category);
@@ -86,14 +87,14 @@ const GoogleMapsService = {
         if (targetCategory.includes("火鍋")) return `${prefixes[index % prefixes.length]}涮涮鍋`;
         
         const realBrands = ["鼎泰豐", "馬辣", "路易莎", "麥當勞", "一蘭", "藏壽司", "薩莉亞", "八方雲集"];
-        if (index % 3 === 0) return `${realBrands[index % realBrands.length]} ${locationInfo.dist}店`;
+        if (index % 3 === 0) return `${realBrands[index % realBrands.length]} ${locationInfo.dist}店`; // 加上分店名更精準
         
         return `${prefixes[index % prefixes.length]}私房料理`;
     };
 
     const results = [];
     for (let i = 0; i < 15; i++) {
-      const name = generateName(i); // 這是最終顯示的店名
+      const name = generateName(i);
       const baseRating = 3.5;
       const rating = (baseRating + Math.random() * 1.5).toFixed(1);
       const reviews = Math.floor(Math.random() * 3000) + 50;
@@ -101,6 +102,7 @@ const GoogleMapsService = {
       const shortReviews = isWash ? Math.floor(reviews * (0.15 + Math.random() * 0.2)) : Math.floor(reviews * 0.03);
       const latOffset = (Math.random() - 0.5) * 0.005; 
       const lngOffset = (Math.random() - 0.5) * 0.005;
+      const address = `${locationInfo.city}${locationInfo.dist}${locationInfo.roads[i % locationInfo.roads.length]}${Math.floor(Math.random()*100)+1}號`;
 
       results.push({
         id: `mock_${i}_${Date.now()}`,
@@ -116,9 +118,9 @@ const GoogleMapsService = {
         isSolo: Math.random() > 0.3, 
         isPet: Math.random() > 0.7,
         image: "🍽️", 
-        address: `${locationInfo.city}${locationInfo.dist}${locationInfo.roads[i % locationInfo.roads.length]}${Math.floor(Math.random()*100)+1}號`,
-        // 修正：使用完整的店名生成搜尋連結，確保點擊後是同一家店
-        googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`
+        address: address,
+        // 模擬模式：組合「店名 + 地址」讓 Google 搜尋更精準，避免搜到別家分店
+        googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + " " + address)}`
       });
     }
     return results;
@@ -134,88 +136,43 @@ const StarRating = ({ rating }) => (
   </div>
 );
 
-// [新] 評論檢視視窗
 const ReviewModal = ({ isOpen, onClose, restaurant }) => {
   if (!isOpen || !restaurant) return null;
 
-  // 模擬評論生成器
   const mockReviews = Array.from({ length: 10 }).map((_, i) => {
     if (restaurant.isSpam) {
-        // 洗評店的評論特徵：字數少、重複、無意義
         const spammyTexts = ["好吃", "推推", "讚", "服務好", "五星送肉", "打卡", "很棒", "CP值高", "美味", "再來"];
-        return {
-            user: `User${Math.floor(Math.random()*9000)+1000}`,
-            rating: 5,
-            text: spammyTexts[Math.floor(Math.random() * spammyTexts.length)],
-            date: "1 天前"
-        };
+        return { user: `User${Math.floor(Math.random()*9000)+1000}`, rating: 5, text: spammyTexts[Math.floor(Math.random() * spammyTexts.length)], date: "1 天前" };
     } else {
-        // 正常店的評論
-        const normalTexts = [
-            "湯頭很濃郁，服務人員也很親切，下次會再來。",
-            "排隊有點久，但食物值得等待。",
-            "環境乾淨，適合聚餐。",
-            "價格偏高，但食材新鮮。",
-            "中規中矩，沒有特別驚艷。",
-        ];
-        return {
-            user: `老饕${i+1}號`,
-            rating: 5,
-            text: normalTexts[i % normalTexts.length],
-            date: `${i+1} 週前`
-        };
+        const normalTexts = ["湯頭很濃郁，服務人員也很親切。", "排隊有點久，但食物值得等待。", "環境乾淨，適合聚餐。", "價格偏高，但食材新鮮。", "中規中矩，沒有特別驚艷。"];
+        return { user: `老饕${i+1}號`, rating: 5, text: normalTexts[i % normalTexts.length], date: `${i+1} 週前` };
     }
   });
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/50 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-          {/* Header */}
           <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-slate-50">
-             <div>
-                 <h3 className="font-bold text-slate-800 text-lg">{restaurant.name}</h3>
-                 <p className="text-xs text-slate-500">最近 10 則 5 星評論樣本</p>
-             </div>
+             <div><h3 className="font-bold text-slate-800 text-lg">{restaurant.name}</h3><p className="text-xs text-slate-500">5 星評論樣本</p></div>
              <button onClick={onClose} className="p-1 hover:bg-slate-200 rounded-full transition"><X size={20} className="text-slate-500"/></button>
           </div>
-          
-          {/* Review List */}
           <div className="overflow-y-auto p-4 space-y-3 bg-slate-50/50 flex-1">
              {restaurant.isSpam && (
                  <div className="bg-red-50 border border-red-200 p-3 rounded-lg flex gap-3 items-start mb-4">
                      <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5"/>
-                     <div>
-                         <p className="text-xs font-bold text-red-700">疑似洗評警示</p>
-                         <p className="text-[10px] text-red-600 mt-1">偵測到大量短評、重複留言或無意義內容。請參考下方樣本自行判斷。</p>
-                     </div>
+                     <div><p className="text-xs font-bold text-red-700">疑似洗評警示</p><p className="text-[10px] text-red-600 mt-1">偵測到大量短評或重複內容。</p></div>
                  </div>
              )}
-             
              {mockReviews.map((review, idx) => (
                  <div key={idx} className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
-                     <div className="flex justify-between items-center mb-1">
-                         <div className="flex items-center gap-2">
-                             <div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">{review.user[0]}</div>
-                             <span className="text-xs font-bold text-slate-700">{review.user}</span>
-                         </div>
-                         <span className="text-[10px] text-slate-400">{review.date}</span>
-                     </div>
-                     <div className="flex text-yellow-400 mb-1">
-                         {[...Array(review.rating)].map((_,i)=><Star key={i} size={10} fill="currentColor"/>)}
-                     </div>
+                     <div className="flex justify-between items-center mb-1"><div className="flex items-center gap-2"><div className="w-6 h-6 bg-slate-200 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500">{review.user[0]}</div><span className="text-xs font-bold text-slate-700">{review.user}</span></div><span className="text-[10px] text-slate-400">{review.date}</span></div>
+                     <div className="flex text-yellow-400 mb-1">{[...Array(review.rating)].map((_,i)=><Star key={i} size={10} fill="currentColor"/>)}</div>
                      <p className="text-sm text-slate-600 leading-snug">{review.text}</p>
                  </div>
              ))}
           </div>
-
-          {/* Footer Action */}
           <div className="p-4 border-t border-gray-100 bg-white">
-              <a 
-                href={restaurant.googleMapsUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition shadow-md shadow-blue-200"
-              >
+              <a href={restaurant.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition shadow-md shadow-blue-200">
                   <ExternalLink size={16}/> 前往 Google Maps 查看全部
               </a>
           </div>
@@ -276,15 +233,22 @@ const LocationModal = ({ isOpen, onClose, onSetLocation }) => {
   );
 };
 
-const PremiumModal = ({ isOpen, onClose, onUnlockTemp, onSubscribe }) => {
+// [升級] 訂閱與廣告彈窗 (含扣點邏輯)
+const PremiumModal = ({ isOpen, onClose, onAddCredits, onSubscribe, message }) => {
   const [step, setStep] = useState('select'); 
   const [adTimeLeft, setAdTimeLeft] = useState(null);
   const [plan, setPlan] = useState('monthly');
 
   useEffect(() => {
     if (adTimeLeft === null) return;
-    if (adTimeLeft > 0) { const timer = setTimeout(() => setAdTimeLeft(adTimeLeft - 1), 1000); return () => clearTimeout(timer); } else { onUnlockTemp(); onClose(); setAdTimeLeft(null); }
-  }, [adTimeLeft, onUnlockTemp, onClose]);
+    if (adTimeLeft > 0) { const timer = setTimeout(() => setAdTimeLeft(adTimeLeft - 1), 1000); return () => clearTimeout(timer); } 
+    else { 
+        onAddCredits(); // 廣告播完，增加點數
+        onClose(); 
+        setAdTimeLeft(null); 
+        alert("🎉 已獲得 2 次解鎖機會！");
+    }
+  }, [adTimeLeft]);
 
   const handlePay = async (selectedPlan) => { 
     setStep('processing'); 
@@ -293,33 +257,41 @@ const PremiumModal = ({ isOpen, onClose, onUnlockTemp, onSubscribe }) => {
   
   if (!isOpen) return null;
   if (adTimeLeft !== null) return (<div className="fixed inset-0 z-[70] bg-black/95 flex flex-col items-center justify-center p-4"><div className="bg-gray-900 w-full max-w-md aspect-video rounded-2xl flex flex-col items-center justify-center relative border border-gray-700 shadow-2xl overflow-hidden"><div className="absolute inset-0 bg-gradient-to-br from-indigo-900 to-purple-900 flex flex-col items-center justify-center text-white space-y-4"><Tv size={48} className="text-yellow-400 animate-pulse" /><h3 className="text-2xl font-bold">超級美味炸雞</h3><p className="text-gray-300 font-mono">廣告剩餘 {adTimeLeft} 秒...</p></div></div></div>);
-  if (step === 'processing') return (<div className="fixed inset-0 z-50 bg-slate-900/70 flex flex-col items-center justify-center p-4 backdrop-blur-md"><div className="bg-white p-12 rounded-3xl flex flex-col items-center gap-4"><Loader2 size={48} className="text-teal-500 animate-spin"/><p className="font-bold text-slate-700">正在連接綠界金流...</p></div></div>);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 flex flex-col items-center justify-center p-4 backdrop-blur-md animate-in fade-in">
       <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl relative border border-white/50">
         <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors z-10"><X size={20} /></button>
-        <div className="p-8 text-center bg-gradient-to-b from-slate-50 to-white">
-          <div className="w-14 h-14 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-4 text-teal-600 transform rotate-3"><Lock size={28} /></div>
-          <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">解鎖進階偵測</h2>
-          <p className="text-slate-500 text-sm mt-2">查看真實評論數據，避開 5 星洗評雷店</p>
-        </div>
-        <div className="p-6 space-y-3 bg-white">
-          <div className={`border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all ${plan === 'monthly' ? 'border-teal-500 bg-teal-50 shadow-md' : 'border-slate-200 hover:border-teal-300'}`} onClick={() => setPlan('monthly')}>
-            <div className="flex items-center gap-4"><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'monthly' ? 'border-teal-500 bg-teal-500' : 'border-slate-300'}`}>{plan === 'monthly' && <div className="w-2 h-2 bg-white rounded-full"></div>}</div><div><h3 className="font-bold text-slate-800">月訂閱</h3><p className="text-xs text-slate-500">隨時可取消</p></div></div>
-            <div className="text-right"><span className="block text-lg font-bold text-teal-700">NT$ 70</span><span className="text-[10px] text-teal-500 uppercase">/ Month</span></div>
+        {step === 'processing' ? (
+          <div className="p-16 flex flex-col items-center justify-center space-y-6">
+            <div className="relative"><div className="w-16 h-16 border-4 border-teal-100 border-t-teal-500 rounded-full animate-spin"></div><div className="absolute inset-0 flex items-center justify-center"><CreditCard size={24} className="text-teal-600"/></div></div>
+            <div className="text-center"><p className="font-bold text-slate-800 text-lg">正在安全連接綠界金流...</p><p className="text-slate-400 text-xs mt-1">請勿關閉視窗</p></div>
           </div>
-          <div className={`relative border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all overflow-hidden ${plan === 'yearly' ? 'border-amber-500 bg-amber-50 shadow-md' : 'border-slate-200 hover:border-amber-300'}`} onClick={() => setPlan('yearly')}>
-            <div className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-bl-lg">🔥 80% OFF</div>
-            <div className="flex items-center gap-4"><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'yearly' ? 'border-amber-500 bg-amber-500' : 'border-slate-300'}`}>{plan === 'yearly' && <div className="w-2 h-2 bg-white rounded-full"></div>}</div><div><h3 className="font-bold text-slate-800">年訂閱</h3><p className="text-xs text-amber-600 font-bold">激省方案！</p></div></div>
-            <div className="text-right mt-1"><span className="block text-lg font-bold text-amber-700">NT$ 672</span><span className="text-[10px] text-amber-600 uppercase line-through opacity-60">NT$ 840</span></div>
-          </div>
-          <button onClick={() => handlePay(plan)} className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 mt-2 ${plan === 'yearly' ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-orange-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}>
-            {plan === 'yearly' ? <Crown size={18} /> : <CreditCard size={18} />} {plan === 'yearly' ? '升級年繳會員' : '開啟月訂閱'}
-          </button>
-          <div className="relative py-2 flex items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink-0 mx-3 text-slate-300 text-xs">OR</span><div className="flex-grow border-t border-slate-100"></div></div>
-          <button onClick={() => setAdTimeLeft(5)} className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center gap-2"><PlayCircle size={16} /> 看廣告單次解鎖</button>
-        </div>
+        ) : (
+          <>
+            <div className="p-8 text-center bg-gradient-to-b from-slate-50 to-white">
+              <div className="w-14 h-14 bg-white rounded-2xl shadow-sm border border-slate-100 flex items-center justify-center mx-auto mb-4 text-teal-600 transform rotate-3"><Lock size={28} /></div>
+              <h2 className="text-2xl font-extrabold text-slate-800 tracking-tight">點數不足</h2>
+              <p className="text-slate-500 text-sm mt-2 leading-relaxed">{message || "您的免費解鎖次數已用完。"}<br/>請觀看廣告或訂閱以繼續使用。</p>
+            </div>
+            <div className="p-6 space-y-3 bg-white">
+              <div className={`border-2 p-4 rounded-2xl flex justify-between items-center cursor-pointer transition-all ${plan === 'monthly' ? 'border-teal-500 bg-teal-50 shadow-md' : 'border-slate-200 hover:border-teal-300'}`} onClick={() => setPlan('monthly')}>
+                <div className="flex items-center gap-4"><div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${plan === 'monthly' ? 'border-teal-500 bg-teal-500' : 'border-slate-300'}`}>{plan === 'monthly' && <div className="w-2 h-2 bg-white rounded-full"></div>}</div><div><h3 className="font-bold text-slate-800">月訂閱</h3><p className="text-xs text-slate-500">無限次使用</p></div></div>
+                <div className="text-right"><span className="block text-lg font-bold text-teal-700">NT$ 70</span><span className="text-[10px] text-teal-500 uppercase">/ Month</span></div>
+              </div>
+              
+              <button onClick={() => handlePay(plan)} className={`w-full py-3.5 rounded-xl font-bold text-white shadow-lg transition active:scale-95 flex items-center justify-center gap-2 mt-2 ${plan === 'yearly' ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-orange-200' : 'bg-teal-600 hover:bg-teal-700 shadow-teal-200'}`}>
+                {plan === 'yearly' ? <Crown size={18} /> : <CreditCard size={18} />} 升級 Pro 會員
+              </button>
+              
+              <div className="relative py-2 flex items-center"><div className="flex-grow border-t border-slate-100"></div><span className="flex-shrink-0 mx-3 text-slate-300 text-xs">OR</span><div className="flex-grow border-t border-slate-100"></div></div>
+              
+              <button onClick={() => setAdTimeLeft(5)} className="w-full py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition text-sm flex items-center justify-center gap-2">
+                  <PlayCircle size={16} /> 觀看廣告 (獲取 2 次機會)
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -338,17 +310,56 @@ export default function EatRealApp() {
   const [restaurants, setRestaurants] = useState([]);
   
   const [isProMember, setIsProMember] = useState(false); 
-  const [isFeatureUnlocked, setIsFeatureUnlocked] = useState(false); 
+  const [isFeatureUnlocked, setIsFeatureUnlocked] = useState(false); // Deprecated in favor of credits
   const [showPremiumModal, setShowPremiumModal] = useState(false); 
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
-  const [selectedRestaurantForReviews, setSelectedRestaurantForReviews] = useState(null); // 用來控制評論彈窗
+  const [selectedRestaurantForReviews, setSelectedRestaurantForReviews] = useState(null);
 
-  useEffect(() => { if (isProMember) setIsFeatureUnlocked(true); }, [isProMember]);
+  // [新] 點數系統 State
+  const [unlockCredits, setUnlockCredits] = useState(() => {
+      const saved = localStorage.getItem('er_credits');
+      const lastReset = localStorage.getItem('er_last_reset');
+      const now = Date.now();
+      // 24小時重置邏輯
+      if (!lastReset || now - parseInt(lastReset) > 24 * 60 * 60 * 1000) {
+          localStorage.setItem('er_last_reset', now);
+          return 0; // 每天預設 0 (逼你看廣告)
+      }
+      return saved ? parseInt(saved) : 0;
+  });
 
+  // 更新 LocalStorage
+  useEffect(() => {
+      localStorage.setItem('er_credits', unlockCredits);
+  }, [unlockCredits]);
+
+  // 增加點數
+  const handleAddCredits = () => {
+      setUnlockCredits(prev => prev + 2);
+      setShowPremiumModal(false);
+  };
+
+  // 消耗點數檢查 (核心邏輯)
+  const checkCreditAndExecute = (actionCallback) => {
+      if (isProMember) {
+          actionCallback();
+          return;
+      }
+      if (unlockCredits > 0) {
+          setUnlockCredits(prev => prev - 1);
+          actionCallback();
+      } else {
+          setShowPremiumModal(true); // 跳出廣告牆
+      }
+  };
+
+  // 自動觸發搜尋與收合選單
   useEffect(() => {
     if (selectedDiningType && selectedCategory !== "全部") {
-        const timer = setTimeout(() => { setIsControlsCollapsed(true); }, 500);
+        const timer = setTimeout(() => { 
+            checkCreditAndExecute(() => setIsControlsCollapsed(true)); 
+        }, 500);
         return () => clearTimeout(timer);
     }
   }, [selectedDiningType, selectedCategory]);
@@ -376,19 +387,31 @@ export default function EatRealApp() {
       if (selectedDiningType === 'solo') matchType = resto.isSolo || resto.tags.includes("單人");
       else if (selectedDiningType === 'date') matchType = resto.tags.includes("約會") || resto.price === "$$$";
       else if (selectedDiningType === 'group') matchType = resto.tags.includes("聚餐");
+      
       const matchPet = filters.pet ? resto.isPet : true;
       const matchPrice = filters.price === "all" || resto.price === filters.price;
       return matchType && matchPet && matchPrice;
     });
   }, [restaurants, selectedDiningType, spamThreshold, filters]);
 
-  const resetSelection = () => { setIsControlsCollapsed(false); };
+  const resetSelection = () => { 
+      checkCreditAndExecute(() => setIsControlsCollapsed(false)); 
+  };
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 text-slate-800 font-sans relative overflow-hidden">
       <LocationModal isOpen={showLocationModal} onClose={() => setShowLocationModal(false)} onSetLocation={(coords, name) => { setCurrentLocation(coords); setLocationName(name); }} />
-      <PremiumModal isOpen={showPremiumModal} onClose={() => setShowPremiumModal(false)} onUnlockTemp={() => setIsFeatureUnlocked(true)} onSubscribe={() => setIsProMember(true)} />
-      <ReviewModal isOpen={!!selectedRestaurantForReviews} onClose={() => setSelectedRestaurantForReviews(null)} restaurant={selectedRestaurantForReviews} />
+      <PremiumModal 
+        isOpen={showPremiumModal} 
+        onClose={() => setShowPremiumModal(false)} 
+        onAddCredits={handleAddCredits} 
+        onSubscribe={() => setIsProMember(true)} 
+      />
+      <ReviewModal 
+        isOpen={!!selectedRestaurantForReviews} 
+        onClose={() => setSelectedRestaurantForReviews(null)} 
+        restaurant={selectedRestaurantForReviews} 
+      />
 
       {/* Header */}
       <header className="bg-white px-6 py-4 shadow-sm z-20 flex justify-between items-center sticky top-0">
@@ -396,8 +419,16 @@ export default function EatRealApp() {
           <div className="bg-teal-500 p-2.5 rounded-2xl text-white shadow-lg shadow-teal-200"><Utensils size={24} strokeWidth={2.5} /></div>
           <div>
              <h1 className="text-xl font-extrabold tracking-tight text-slate-800">食真 EatReal</h1>
-             {isProMember && <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold ml-1">PRO</span>}
+             <div className="flex items-center gap-2">
+                <p className="text-[10px] text-slate-400 font-bold tracking-wider uppercase">Real Reviews Only</p>
+                {!isProMember && (
+                    <span className="bg-amber-100 text-amber-700 text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-0.5">
+                        <Ticket size={10}/> 剩餘 {unlockCredits} 次
+                    </span>
+                )}
+             </div>
           </div>
+          {isProMember && <span className="ml-2 bg-amber-100 text-amber-800 text-[10px] px-2.5 py-1 rounded-full font-bold shadow-sm flex items-center gap-1 border border-amber-200"><Crown size={12} strokeWidth={3} /> PRO</span>}
         </div>
         <button onClick={() => setShowLocationModal(true)} className="flex items-center gap-2 text-xs px-4 py-2.5 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 transition border border-slate-200 max-w-[160px] group">
           <LocateFixed size={16} className="flex-shrink-0 text-teal-500 group-hover:scale-110 transition-transform" />
@@ -424,7 +455,6 @@ export default function EatRealApp() {
               >
                 <div className={`transition-transform duration-300 ${isSelected ? 'scale-110 ' + type.color : 'text-slate-400'}`}>{type.icon}</div>
                 <span className={`text-xs font-bold ${isSelected ? 'text-slate-800' : 'text-slate-500'}`}>{type.name}</span>
-                <div className={`absolute bottom-0 left-0 w-full h-1 ${isSelected ? 'bg-current ' + type.color : 'bg-transparent'}`}></div>
               </button>
             );
           })}
@@ -440,16 +470,9 @@ export default function EatRealApp() {
         </div>
 
         <div className="flex flex-wrap gap-4 items-center pt-2">
-          <div className={`flex-grow px-4 py-3 rounded-2xl border flex flex-col justify-center min-w-[200px] relative overflow-hidden transition-all ${isFeatureUnlocked ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
-             {!isFeatureUnlocked && (
-                <div className="absolute inset-0 bg-slate-100/60 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                    <button onClick={() => setShowPremiumModal(true)} className="bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 flex items-center gap-1 hover:bg-slate-50">
-                        <Lock size={12}/> 解鎖調整
-                    </button>
-                </div>
-             )}
-             <div className="flex justify-between text-xs text-slate-500 font-bold mb-2"><span className="flex items-center gap-1.5"><SlidersHorizontal size={14} className="text-slate-400"/> 洗評敏感度設定</span><span className={`px-2 py-0.5 rounded transition-colors ${isFeatureUnlocked ? 'text-teal-600 bg-teal-100' : 'text-slate-400 bg-slate-200'}`}>{(spamThreshold * 100).toFixed(0)}%</span></div>
-             <input type="range" min="0.05" max="0.50" step="0.05" value={spamThreshold} onChange={(e) => setSpamThreshold(parseFloat(e.target.value))} disabled={!isFeatureUnlocked} className="w-full h-2 bg-slate-300 rounded-full appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition disabled:cursor-not-allowed disabled:accent-slate-400" />
+          <div className="flex-grow bg-slate-100 px-4 py-3 rounded-2xl border border-slate-200 flex flex-col justify-center min-w-[200px]">
+             <div className="flex justify-between text-xs text-slate-500 font-bold mb-2"><span className="flex items-center gap-1.5"><SlidersHorizontal size={14} className="text-slate-400"/> 洗評敏感度設定</span><span className="text-teal-600 bg-teal-100 px-2 py-0.5 rounded">{(spamThreshold * 100).toFixed(0)}%</span></div>
+             <input type="range" min="0.05" max="0.50" step="0.05" value={spamThreshold} onChange={(e) => setSpamThreshold(parseFloat(e.target.value))} className="w-full h-2 bg-slate-300 rounded-full appearance-none cursor-pointer accent-teal-500 hover:accent-teal-400 transition" />
           </div>
           <select className="flex-shrink-0 px-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm text-slate-600 font-bold shadow-sm focus:outline-none focus:border-teal-500 transition hover:bg-slate-50 cursor-pointer" value={filters.price} onChange={(e) => setFilters({...filters, price: e.target.value})}>
               <option value="all">💰 預算不限</option><option value="$">$ 平價</option><option value="$$">$$ 中價</option><option value="$$$">$$$ 高檔</option>
@@ -481,12 +504,11 @@ export default function EatRealApp() {
         )}
         
         {processedRestaurants.map(resto => (
-            <div key={resto.id} className={`relative p-5 rounded-[24px] border transition-all bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-default group ${isFeatureUnlocked && resto.isSpam ? 'bg-red-50/40 border-red-100' : 'border-white ring-1 ring-slate-100'}`}>
+            <div key={resto.id} className={`relative p-5 rounded-[24px] border transition-all bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 cursor-default group ${resto.isSpam ? 'bg-red-50/40 border-red-100' : 'border-white ring-1 ring-slate-100'}`}>
               <div className="flex gap-5">
                 <div className="w-24 h-24 bg-slate-100 rounded-2xl flex items-center justify-center text-4xl shadow-inner border border-slate-200 shrink-0 select-none">{resto.image}</div>
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                   <div>
-                      {/* 店名可點擊，直接開啟地圖 */}
                       <div className="flex justify-between items-start">
                         <a href={resto.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="font-bold text-lg truncate pr-2 text-slate-800 leading-tight hover:text-blue-600 hover:underline transition-colors">{resto.name}</a>
                         <span className="text-slate-500 font-bold text-[10px] bg-slate-100 px-2 py-1 rounded-md tracking-wide">{resto.price}</span>
@@ -501,25 +523,21 @@ export default function EatRealApp() {
                   </div>
 
                   <div className="mt-4 flex items-center justify-between">
-                    {!isFeatureUnlocked && resto.isSpam ? (
-                        <button onClick={() => setShowPremiumModal(true)} className="flex items-center gap-1.5 bg-slate-800 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-slate-700 transition shadow-md shadow-slate-200">
-                            <Lock size={12}/> 解鎖分析
-                        </button>
-                    ) : (isFeatureUnlocked && resto.isSpam ? (
+                    {resto.isSpam ? (
                       <div 
                         className="text-xs text-rose-600 font-bold flex items-center gap-1.5 bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 cursor-pointer hover:bg-rose-200 transition"
-                        onClick={() => setSelectedRestaurantForReviews(resto)}
+                        onClick={() => checkCreditAndExecute(() => setSelectedRestaurantForReviews(resto))}
                       >
                           <AlertTriangle size={14} /> 疑似洗評 {(resto.washRatio*100).toFixed(0)}%
                       </div>
                     ) : (
                       <div 
                         className="text-xs text-teal-600 font-bold flex items-center gap-1.5 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100 cursor-pointer hover:bg-teal-100 transition"
-                        onClick={() => setSelectedRestaurantForReviews(resto)}
+                        onClick={() => checkCreditAndExecute(() => setSelectedRestaurantForReviews(resto))}
                       >
                           <CheckCircle size={14} /> 評論健康
                       </div>
-                    ))}
+                    )}
                     
                     <a href={resto.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-slate-500 hover:text-blue-600 flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 transition group-hover:opacity-100 opacity-60">
                       <span>Google Maps</span> <ExternalLink size={12} />
